@@ -1,0 +1,22 @@
+application:
+  name: WebStatusWatcher
+  version: 1.0.0
+
+watcher:
+  interval: 30
+  timeout: 15
+  user_agent: WebStatusWatcher/1.0
+
+database:
+  filename: webstatuswatcher.db
+
+logging:
+  level: INFO
+  filename: application.log
+
+notifications:
+  sound: true
+  telegram: false
+
+ui:
+  theme: light
