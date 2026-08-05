@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "web-status-watcher"
+version = "1.0.0"
+description = "Universal website status monitoring application"
+authors = ["Sergiy Samoylyk"]
+readme = "README.md"
+packages = [{ include = "web_status_watcher", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.13,<3.15"
+PySide6 = "^6.9.0"
+requests = "^2.32.3"
+beautifulsoup4 = "^4.13.4"
+pyyaml = "^6.0.2"
+apscheduler = "^3.11.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+ruff = "^0.12.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
