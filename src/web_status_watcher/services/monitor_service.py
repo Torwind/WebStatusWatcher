@@ -6,6 +6,7 @@ from sqlite3 import Row
 from web_status_watcher.database import Database
 from web_status_watcher.logging import get_logger
 from web_status_watcher.network import HttpClient
+from web_status_watcher.services.response_mapper import ResponseMapper
 
 
 class MonitorService:
@@ -19,7 +20,9 @@ class MonitorService:
     ) -> None:
 
         self._database = database
+
         self._client = HttpClient()
+
         self._logger = get_logger()
 
         self._last_check: dict[int, float] = {}
@@ -39,7 +42,10 @@ class MonitorService:
 
             interval = site["interval_seconds"]
 
-            last = self._last_check.get(site_id, 0)
+            last = self._last_check.get(
+                site_id,
+                0,
+            )
 
             if now - last >= interval:
 
@@ -63,17 +69,22 @@ class MonitorService:
             site["url"],
         )
 
+        result = ResponseMapper.map(
+            response,
+        )
+
         self._database.history.add(
             site_id=site["id"],
-            status_code=response.status_code,
-            elapsed=response.elapsed,
-            content_length=response.content_length,
+            status_code=result.http_status,
+            elapsed=result.elapsed,
+            content_length=result.content_length,
         )
 
         self._logger.info(
-            "%s OK (%d) %.3fs %d bytes",
+            "%s %s (%d) %.3fs %d bytes",
             site["name"],
-            response.status_code,
-            response.elapsed,
-            response.content_length,
+            result.status.value,
+            result.http_status,
+            result.elapsed,
+            result.content_length,
         )
