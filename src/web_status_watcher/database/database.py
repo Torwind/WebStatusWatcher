@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+
+class Database:
+    """
+    SQLite database wrapper.
+    """
+
+    def __init__(self, db_path: Path):
+        self._db_path = db_path
+        self._connection: sqlite3.Connection | None = None
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        if self._connection is None:
+            self.connect()
+
+        assert self._connection is not None
+        return self._connection
+
+    def connect(self) -> None:
+        """
+        Open SQLite connection.
+        """
+
+        self._db_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        self._connection = sqlite3.connect(
+            self._db_path,
+            check_same_thread=False,
+        )
+
+        self._connection.row_factory = sqlite3.Row
+
+        self._connection.execute(
+            "PRAGMA foreign_keys = ON;"
+        )
+
+    def close(self) -> None:
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+
+    def execute(
+        self,
+        sql: str,
+        parameters: tuple = (),
+    ) -> sqlite3.Cursor:
+
+        cursor = self.connection.execute(
+            sql,
+            parameters,
+        )
+
+        self.connection.commit()
+
+        return cursor
+
+    def executescript(
+        self,
+        script: str,
+    ) -> None:
+
+        self.connection.executescript(script)
+
+        self.connection.commit()
