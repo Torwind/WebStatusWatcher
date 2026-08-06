@@ -3,6 +3,12 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from .schema import SCHEMA
+from .repositories import (
+    SiteRepository,
+    HistoryRepository,
+)
+
 
 class Database:
     """
@@ -10,21 +16,30 @@ class Database:
     """
 
     def __init__(self, db_path: Path):
+
         self._db_path = db_path
+
         self._connection: sqlite3.Connection | None = None
+
+        self.sites: SiteRepository | None = None
+
+        self.history: HistoryRepository | None = None
 
     @property
     def connection(self) -> sqlite3.Connection:
+
         if self._connection is None:
+
             self.connect()
 
         assert self._connection is not None
+
         return self._connection
 
     def connect(self) -> None:
-        """
-        Open SQLite connection.
-        """
+
+        if self._connection is not None:
+            return
 
         self._db_path.parent.mkdir(
             parents=True,
@@ -42,10 +57,29 @@ class Database:
             "PRAGMA foreign_keys = ON;"
         )
 
+        self._connection.executescript(
+            SCHEMA
+        )
+
+        self.sites = SiteRepository(
+            self._connection
+        )
+
+        self.history = HistoryRepository(
+            self._connection
+        )
+
     def close(self) -> None:
+
         if self._connection is not None:
+
             self._connection.close()
+
             self._connection = None
+
+            self.sites = None
+
+            self.history = None
 
     def execute(
         self,
@@ -67,6 +101,8 @@ class Database:
         script: str,
     ) -> None:
 
-        self.connection.executescript(script)
+        self.connection.executescript(
+            script
+        )
 
         self.connection.commit()

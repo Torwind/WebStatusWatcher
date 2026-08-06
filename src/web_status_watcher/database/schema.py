@@ -1,0 +1,35 @@
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS sites
+(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    name TEXT NOT NULL,
+
+    url TEXT NOT NULL UNIQUE,
+
+    interval_seconds INTEGER NOT NULL DEFAULT 30,
+
+    enabled INTEGER NOT NULL DEFAULT 1,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS history
+(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    site_id INTEGER NOT NULL,
+
+    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    status_code INTEGER NOT NULL,
+
+    elapsed REAL NOT NULL,
+
+    content_length INTEGER NOT NULL,
+
+    FOREIGN KEY(site_id)
+        REFERENCES sites(id)
+        ON DELETE CASCADE
+);
+"""

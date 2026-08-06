@@ -1,15 +1,26 @@
 """
-Version information.
+Application version information.
 """
 
 APP_NAME = "WebStatusWatcher"
 
-VERSION_MAJOR = 1
-VERSION_MINOR = 0
-VERSION_PATCH = 0
+VERSION_MAJOR = 0
+VERSION_MINOR = 3
+VERSION_PATCH = 2
 
-VERSION = f"{VERSION_MAJOR}.{VERSION_MINOR}.{VERSION_PATCH}"
+VERSION = (
+    f"{VERSION_MAJOR}."
+    f"{VERSION_MINOR}."
+    f"{VERSION_PATCH}"
+)
 
 
 def full_version() -> str:
-    return f"{APP_NAME} v{VERSION}"
+    """
+    Return application name with version.
+    """
+
+    return (
+        f"{APP_NAME} "
+        f"v{VERSION}"
+    )

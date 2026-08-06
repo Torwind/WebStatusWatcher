@@ -9,7 +9,6 @@ from .constants import (
 from .config import ConfigManager
 from .config.schema import validate
 from .database import Database
-from .database.repository import Repository
 from .logging import get_logger
 from .version import full_version
 
@@ -36,15 +35,34 @@ def main() -> None:
 
     database = Database(DATABASE_FILE)
 
-    repository = Repository(database)
+    database.connect()
 
     logger.info("Database initialized")
 
-    if len(repository.get_sites()) == 0:
+    assert database.sites is not None
 
-        repository.add_site(
-            "Example",
-            "https://example.com",
+    if len(database.sites.get_all()) == 0:
+
+        database.execute(
+            """
+            INSERT INTO sites
+            (
+                name,
+                url,
+                interval_seconds
+            )
+            VALUES
+            (
+                ?,
+                ?,
+                ?
+            )
+            """,
+            (
+                "Example",
+                "https://example.com",
+                30,
+            ),
         )
 
         logger.info("Default site created")
@@ -60,7 +78,7 @@ def main() -> None:
 
     print("Registered sites:")
 
-    for site in repository.get_sites():
+    for site in database.sites.get_all():
         print(
             f"  [{site['id']}] "
             f"{site['name']} -> {site['url']}"
