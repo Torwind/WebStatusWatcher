@@ -6,7 +6,12 @@ from sqlite3 import Row
 from web_status_watcher.database import Database
 from web_status_watcher.logging import get_logger
 from web_status_watcher.network import HttpClient
+from web_status_watcher.network.exceptions import (
+    HttpRequestError,
+    TimeoutError,
+)
 from web_status_watcher.services.response_mapper import ResponseMapper
+from web_status_watcher.status import Status
 
 
 class MonitorService:
@@ -63,13 +68,42 @@ class MonitorService:
             site["name"],
         )
 
-        response = self._client.get(
-            site["url"],
+        try:
+
+            response = self._client.get(
+                site["url"],
+            )
+
+            result = ResponseMapper.map(
+                response,
+            )
+
+        except TimeoutError as exc:
+
+            result = ResponseMapper.error(
+                Status.TIMEOUT,
+                str(exc),
+            )
+
+        except HttpRequestError as exc:
+
+            result = ResponseMapper.error(
+                Status.OFFLINE,
+                str(exc),
+            )
+
+        self._save_result(
+            site,
+            result,
         )
 
-        result = ResponseMapper.map(
-            response,
-        )
+    def _save_result(
+        self,
+        site: Row,
+        result,
+    ) -> None:
+
+        assert self._database.history is not None
 
         previous = self._database.history.get_last(
             site["id"],
@@ -78,11 +112,22 @@ class MonitorService:
         changed = False
 
         if (
-            previous is not None
+            result.status == Status.ONLINE
+            and previous is not None
             and previous["content_hash"]
-            and previous["content_hash"] != result.content_hash
+            and previous["content_hash"]
+            != result.content_hash
         ):
             changed = True
+
+        if changed:
+
+            result.status = Status.CHANGED
+
+            self._logger.warning(
+                "%s CONTENT CHANGED",
+                site["name"],
+            )
 
         self._database.history.add(
             site_id=site["id"],
@@ -92,18 +137,31 @@ class MonitorService:
             content_hash=result.content_hash,
         )
 
-        if changed:
+        if result.status == Status.ONLINE:
 
-            self._logger.warning(
-                "%s CONTENT CHANGED",
+            self._logger.info(
+                "%s ONLINE (%d) %.3fs %d bytes",
                 site["name"],
+                result.http_status,
+                result.elapsed,
+                result.content_length,
             )
 
-        self._logger.info(
-            "%s %s (%d) %.3fs %d bytes",
-            site["name"],
-            result.status.value,
-            result.http_status,
-            result.elapsed,
-            result.content_length,
-        )
+        elif result.status == Status.CHANGED:
+
+            self._logger.warning(
+                "%s CHANGED (%d) %.3fs %d bytes",
+                site["name"],
+                result.http_status,
+                result.elapsed,
+                result.content_length,
+            )
+
+        else:
+
+            self._logger.error(
+                "%s %s: %s",
+                site["name"],
+                result.status.value,
+                result.message,
+            )

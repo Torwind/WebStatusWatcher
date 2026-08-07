@@ -10,7 +10,7 @@ from web_status_watcher.status import (
 
 class ResponseMapper:
     """
-    Convert HttpResponse to CheckResult.
+    Convert HTTP response to CheckResult.
     """
 
     @staticmethod
@@ -19,8 +19,11 @@ class ResponseMapper:
     ) -> CheckResult:
 
         if response.is_success:
+
             status = Status.ONLINE
+
         else:
+
             status = Status.HTTP_ERROR
 
         return CheckResult(
@@ -31,4 +34,22 @@ class ResponseMapper:
             content_hash=FingerprintHasher.sha256(
                 response.text,
             ),
+        )
+
+    @staticmethod
+    def error(
+        status: Status,
+        message: str,
+    ) -> CheckResult:
+        """
+        Create CheckResult for a failed network request.
+        """
+
+        return CheckResult(
+            status=status,
+            http_status=0,
+            elapsed=0.0,
+            content_length=0,
+            content_hash="",
+            message=message,
         )
