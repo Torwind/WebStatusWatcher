@@ -135,6 +135,8 @@ class MonitorService:
             elapsed=result.elapsed,
             content_length=result.content_length,
             content_hash=result.content_hash,
+            status=result.status.value,
+            message=result.message,
         )
 
         if result.status == Status.ONLINE:

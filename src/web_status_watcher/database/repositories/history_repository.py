@@ -15,11 +15,11 @@ class HistoryRepository:
 
         self._connection = connection
 
-        self._ensure_content_hash()
+        self._ensure_columns()
 
-    def _ensure_content_hash(self) -> None:
+    def _ensure_columns(self) -> None:
         """
-        Ensure history table contains content_hash column.
+        Ensure history table contains all required columns.
         """
 
         columns = self._connection.execute(
@@ -33,6 +33,8 @@ class HistoryRepository:
             for column in columns
         }
 
+        changed = False
+
         if "content_hash" not in column_names:
 
             self._connection.execute(
@@ -42,6 +44,31 @@ class HistoryRepository:
                 """
             )
 
+            changed = True
+
+        if "status" not in column_names:
+
+            self._connection.execute(
+                """
+                ALTER TABLE history
+                ADD COLUMN status TEXT NOT NULL DEFAULT 'UNKNOWN'
+                """
+            )
+
+            changed = True
+
+        if "message" not in column_names:
+
+            self._connection.execute(
+                """
+                ALTER TABLE history
+                ADD COLUMN message TEXT NOT NULL DEFAULT ''
+                """
+            )
+
+            changed = True
+
+        if changed:
             self._connection.commit()
 
     def add(
@@ -51,6 +78,8 @@ class HistoryRepository:
         elapsed: float,
         content_length: int,
         content_hash: str = "",
+        status: str = "UNKNOWN",
+        message: str = "",
     ) -> None:
 
         self._connection.execute(
@@ -61,9 +90,11 @@ class HistoryRepository:
                 status_code,
                 elapsed,
                 content_length,
-                content_hash
+                content_hash,
+                status,
+                message
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 site_id,
@@ -71,6 +102,8 @@ class HistoryRepository:
                 elapsed,
                 content_length,
                 content_hash,
+                status,
+                message,
             ),
         )
 
