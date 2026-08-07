@@ -20,9 +20,7 @@ class MonitorService:
     ) -> None:
 
         self._database = database
-
         self._client = HttpClient()
-
         self._logger = get_logger()
 
         self._last_check: dict[int, float] = {}
@@ -73,12 +71,33 @@ class MonitorService:
             response,
         )
 
+        previous = self._database.history.get_last(
+            site["id"],
+        )
+
+        changed = False
+
+        if (
+            previous is not None
+            and previous["content_hash"]
+            and previous["content_hash"] != result.content_hash
+        ):
+            changed = True
+
         self._database.history.add(
             site_id=site["id"],
             status_code=result.http_status,
             elapsed=result.elapsed,
             content_length=result.content_length,
+            content_hash=result.content_hash,
         )
+
+        if changed:
+
+            self._logger.warning(
+                "%s CONTENT CHANGED",
+                site["name"],
+            )
 
         self._logger.info(
             "%s %s (%d) %.3fs %d bytes",

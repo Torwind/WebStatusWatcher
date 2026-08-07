@@ -1,34 +1,25 @@
 from web_status_watcher.constants import DATABASE_FILE
 from web_status_watcher.database import Database
 
-db = Database(DATABASE_FILE)
-db.connect()
 
-rows = db.connection.execute(
-    """
-    SELECT
-        id,
-        site_id,
-        checked_at,
-        status_code,
-        elapsed,
-        content_length
-    FROM history
-    ORDER BY id DESC
-    """
-).fetchall()
+database = Database(DATABASE_FILE)
 
-print(f"History records: {len(rows)}")
-print()
+database.connect()
 
-for row in rows:
+assert database.history is not None
+
+last = database.history.get_last(1)
+
+if last is None:
+    print("No history records")
+else:
     print(
-        row["id"],
-        row["site_id"],
-        row["checked_at"],
-        row["status_code"],
-        row["elapsed"],
-        row["content_length"],
+        last["id"],
+        last["site_id"],
+        last["status_code"],
+        last["elapsed"],
+        last["content_length"],
+        last["content_hash"],
     )
 
-db.close()
+database.close()
