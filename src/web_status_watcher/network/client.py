@@ -10,6 +10,7 @@ from .exceptions import (
 )
 from .headers import DEFAULT_HEADERS
 from .response import HttpResponse
+from .retry import RetryEngine
 from .user_agent import APP_USER_AGENT
 from .validator import validate_url
 
@@ -24,6 +25,8 @@ class HttpClient:
         timeout: float = 15.0,
         follow_redirects: bool = True,
         verify_ssl: bool = True,
+        retry_attempts: int = 3,
+        retry_delay: float = 1.0,
     ) -> None:
 
         self._timeout = timeout
@@ -36,6 +39,11 @@ class HttpClient:
             headers=headers,
             follow_redirects=follow_redirects,
             verify=verify_ssl,
+        )
+
+        self._retry = RetryEngine(
+            attempts=retry_attempts,
+            delay=retry_delay,
         )
 
     @property
@@ -86,6 +94,7 @@ class HttpClient:
             url,
             data=data,
         )
+
     def _request(
         self,
         method: str,
@@ -93,39 +102,48 @@ class HttpClient:
         **kwargs,
     ) -> HttpResponse:
         """
-        Execute HTTP request.
+        Execute HTTP request with retry support.
         """
 
         url = validate_url(url)
 
-        started = time.perf_counter()
+        def operation() -> HttpResponse:
 
-        try:
-            response = self._client.request(
-                method=method,
-                url=url,
-                **kwargs,
+            started = time.perf_counter()
+
+            try:
+
+                response = self._client.request(
+                    method=method,
+                    url=url,
+                    **kwargs,
+                )
+
+            except httpx.TimeoutException as exc:
+
+                raise TimeoutError(
+                    f"Request timeout: {url}"
+                ) from exc
+
+            except httpx.HTTPError as exc:
+
+                raise HttpRequestError(
+                    str(exc)
+                ) from exc
+
+            elapsed = time.perf_counter() - started
+
+            return HttpResponse(
+                url=str(response.url),
+                status_code=response.status_code,
+                text=response.text,
+                elapsed=elapsed,
+                ok=response.is_success,
+                headers=dict(response.headers),
             )
 
-        except httpx.TimeoutException as exc:
-            raise TimeoutError(
-                f"Request timeout: {url}"
-            ) from exc
-
-        except httpx.HTTPError as exc:
-            raise HttpRequestError(
-                str(exc)
-            ) from exc
-
-        elapsed = time.perf_counter() - started
-
-        return HttpResponse(
-            url=str(response.url),
-            status_code=response.status_code,
-            text=response.text,
-            elapsed=elapsed,
-            ok=response.is_success,
-            headers=dict(response.headers),
+        return self._retry.execute(
+            operation,
         )
 
     def __del__(self) -> None:
