@@ -42,6 +42,7 @@ class MonitorService:
         for site in self._database.sites.get_all():
 
             site_id = site["id"]
+
             interval = site["interval_seconds"]
 
             last = self._last_check.get(
@@ -110,6 +111,7 @@ class MonitorService:
 
         assert self._database.history is not None
 
+        # Last record is used for availability transitions.
         previous = self._database.history.get_last(
             site["id"],
         )
@@ -126,10 +128,15 @@ class MonitorService:
             result.status,
         )
 
+        # Last ONLINE record is used for content comparison.
+        previous_online = self._database.history.get_last_online(
+            site["id"],
+        )
+
         # Detect content change.
         self._detect_content_change(
             site,
-            previous,
+            previous_online,
             result,
         )
 
@@ -195,25 +202,37 @@ class MonitorService:
     def _detect_content_change(
         self,
         site: Row,
-        previous: Row | None,
+        previous_online: Row | None,
         result,
     ) -> None:
         """
         Detect content fingerprint changes.
+
+        Only successful ONLINE responses participate
+        in content comparison. Network errors and HTTP
+        errors are ignored for fingerprint comparison.
         """
 
-        if (
-            result.status == Status.ONLINE
-            and previous is not None
-            and previous["content_hash"]
-            and previous["content_hash"] != result.content_hash
-        ):
-            result.status = Status.CHANGED
+        if result.status != Status.ONLINE:
+            return
 
-            self._logger.warning(
-                "%s CONTENT CHANGED",
-                site["name"],
-            )
+        if previous_online is None:
+            return
+
+        previous_hash = previous_online["content_hash"]
+
+        if not previous_hash:
+            return
+
+        if previous_hash == result.content_hash:
+            return
+
+        result.status = Status.CHANGED
+
+        self._logger.warning(
+            "%s CONTENT CHANGED",
+            site["name"],
+        )
 
     def _log_result(
         self,

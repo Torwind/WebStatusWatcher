@@ -131,3 +131,27 @@ class HistoryRepository:
         )
 
         return cursor.fetchone()
+
+    def get_last_online(
+        self,
+        site_id: int,
+    ) -> sqlite3.Row | None:
+        """
+        Return the latest ONLINE history record for a site.
+        """
+
+        cursor = self._connection.execute(
+            """
+            SELECT *
+            FROM history
+            WHERE site_id = ?
+              AND status = 'ONLINE'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (
+                site_id,
+            ),
+        )
+
+        return cursor.fetchone()
