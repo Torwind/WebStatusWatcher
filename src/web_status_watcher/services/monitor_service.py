@@ -42,7 +42,6 @@ class MonitorService:
         for site in self._database.sites.get_all():
 
             site_id = site["id"]
-
             interval = site["interval_seconds"]
 
             last = self._last_check.get(
@@ -60,6 +59,9 @@ class MonitorService:
         self,
         site: Row,
     ) -> None:
+        """
+        Check one website.
+        """
 
         assert self._database.history is not None
 
@@ -102,6 +104,9 @@ class MonitorService:
         site: Row,
         result,
     ) -> None:
+        """
+        Process and save monitoring result.
+        """
 
         assert self._database.history is not None
 
@@ -109,26 +114,26 @@ class MonitorService:
             site["id"],
         )
 
-        changed = False
+        previous_status: str | None = None
 
-        if (
-            result.status == Status.ONLINE
-            and previous is not None
-            and previous["content_hash"]
-            and previous["content_hash"]
-            != result.content_hash
-        ):
-            changed = True
+        if previous is not None:
+            previous_status = previous["status"]
 
-        if changed:
+        # Detect availability transition.
+        self._detect_transition(
+            site,
+            previous_status,
+            result.status,
+        )
 
-            result.status = Status.CHANGED
+        # Detect content change.
+        self._detect_content_change(
+            site,
+            previous,
+            result,
+        )
 
-            self._logger.warning(
-                "%s CONTENT CHANGED",
-                site["name"],
-            )
-
+        # Save result.
         self._database.history.add(
             site_id=site["id"],
             status_code=result.http_status,
@@ -138,6 +143,86 @@ class MonitorService:
             status=result.status.value,
             message=result.message,
         )
+
+        # Log final result.
+        self._log_result(
+            site,
+            result,
+        )
+
+    def _detect_transition(
+        self,
+        site: Row,
+        previous_status: str | None,
+        current_status: Status,
+    ) -> None:
+        """
+        Detect availability state transitions.
+        """
+
+        if previous_status is None:
+            return
+
+        # ONLINE -> OFFLINE/TIMEOUT
+        if (
+            previous_status == Status.ONLINE.value
+            and current_status in (
+                Status.OFFLINE,
+                Status.TIMEOUT,
+            )
+        ):
+            self._logger.warning(
+                "%s DOWN: %s -> %s",
+                site["name"],
+                previous_status,
+                current_status.value,
+            )
+
+        # OFFLINE/TIMEOUT -> ONLINE
+        elif (
+            previous_status in (
+                Status.OFFLINE.value,
+                Status.TIMEOUT.value,
+            )
+            and current_status == Status.ONLINE
+        ):
+            self._logger.info(
+                "%s RECOVERY: %s -> ONLINE",
+                site["name"],
+                previous_status,
+            )
+
+    def _detect_content_change(
+        self,
+        site: Row,
+        previous: Row | None,
+        result,
+    ) -> None:
+        """
+        Detect content fingerprint changes.
+        """
+
+        if (
+            result.status == Status.ONLINE
+            and previous is not None
+            and previous["content_hash"]
+            and previous["content_hash"] != result.content_hash
+        ):
+            result.status = Status.CHANGED
+
+            self._logger.warning(
+                "%s CONTENT CHANGED",
+                site["name"],
+            )
+
+    def _log_result(
+        self,
+        site: Row,
+        result,
+    ) -> None:
+        """
+        Log final monitoring result.
+        """
 
         if result.status == Status.ONLINE:
 
