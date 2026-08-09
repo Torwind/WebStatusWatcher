@@ -12,6 +12,7 @@ REQUIRED_SECTIONS = (
     "logging",
     "notifications",
     "ui",
+    "purchase",
 )
 
 

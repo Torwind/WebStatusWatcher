@@ -20,3 +20,9 @@ notifications:
 
 ui:
   theme: light
+
+purchase:
+  enabled: false
+  product_url: ""
+  products_id: 0
+  quantity: 1
