@@ -9,6 +9,9 @@ from typing import Protocol
 from web_status_watcher.purchase.availability import (
     AvailabilityResult,
 )
+from web_status_watcher.purchase.detector import (
+    PurchaseAvailabilityDetector,
+)
 from web_status_watcher.purchase.url_parser import (
     ProductUrl,
 )
@@ -35,15 +38,7 @@ class HttpGetter(Protocol):
 class AvailabilityChecker:
     """
     Check whether a purchase product page is available.
-
-    Availability is determined by:
-    - HTTP 200 status;
-    - presence of the active "Купити" button.
     """
-
-    BUY_BUTTON_MARKER = (
-        '<button type="submit" class="btn-primary buy">Купити</button>'
-    )
 
     def __init__(
         self,
@@ -51,6 +46,7 @@ class AvailabilityChecker:
     ) -> None:
 
         self._http_client = http_client
+        self._detector = PurchaseAvailabilityDetector()
 
     def check(
         self,
@@ -64,32 +60,70 @@ class AvailabilityChecker:
             product.url,
         )
 
+        # HTTP error: the product page itself could not
+        # be obtained successfully.
         if response.status_code != 200:
+            from web_status_watcher.purchase.status import (
+                PurchaseAvailabilityStatus,
+            )
+
+            status = (
+                PurchaseAvailabilityStatus.NOT_AVAILABLE
+            )
 
             return AvailabilityResult(
                 available=False,
                 products_id=product.products_id,
                 cid=product.cid,
                 status_code=response.status_code,
+                status=status,
                 message=(
-                    f"HTTP status: {response.status_code}"
+                    f"HTTP status: "
+                    f"{response.status_code}"
                 ),
             )
 
-        available = self.BUY_BUTTON_MARKER in response.text
-
-        if available:
-
-            message = "Product is available for purchase"
-
-        else:
-
-            message = "Product is not available for purchase"
+        # Analyse the actual HTML returned by the server.
+        status = self._detector.detect(
+            response.text,
+        )
 
         return AvailabilityResult(
-            available=available,
+            available=(
+                status
+                == self._get_available_status()
+            ),
             products_id=product.products_id,
             cid=product.cid,
             status_code=response.status_code,
-            message=message,
+            status=status,
+            message=self._message_for(status),
         )
+
+    @staticmethod
+    def _get_available_status():
+        from web_status_watcher.purchase.status import (
+            PurchaseAvailabilityStatus,
+        )
+
+        return PurchaseAvailabilityStatus.AVAILABLE
+
+    @staticmethod
+    def _message_for(status) -> str:
+        from web_status_watcher.purchase.status import (
+            PurchaseAvailabilityStatus,
+        )
+
+        if (
+            status
+            == PurchaseAvailabilityStatus.AVAILABLE
+        ):
+            return "Product is available for purchase"
+
+        if (
+            status
+            == PurchaseAvailabilityStatus.LIMIT_REACHED
+        ):
+            return "Purchase limit has been reached"
+
+        return "Product is not available for purchase"
