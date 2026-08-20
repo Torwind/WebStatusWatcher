@@ -12,6 +12,9 @@ from web_status_watcher.purchase.availability import (
 from web_status_watcher.purchase.detector import (
     PurchaseAvailabilityDetector,
 )
+from web_status_watcher.purchase.status import (
+    PurchaseAvailabilityStatus,
+)
 from web_status_watcher.purchase.url_parser import (
     ProductUrl,
 )
@@ -63,9 +66,6 @@ class AvailabilityChecker:
         # HTTP error: the product page itself could not
         # be obtained successfully.
         if response.status_code != 200:
-            from web_status_watcher.purchase.status import (
-                PurchaseAvailabilityStatus,
-            )
 
             status = (
                 PurchaseAvailabilityStatus.NOT_AVAILABLE
@@ -91,7 +91,7 @@ class AvailabilityChecker:
         return AvailabilityResult(
             available=(
                 status
-                == self._get_available_status()
+                == PurchaseAvailabilityStatus.AVAILABLE
             ),
             products_id=product.products_id,
             cid=product.cid,
@@ -101,18 +101,9 @@ class AvailabilityChecker:
         )
 
     @staticmethod
-    def _get_available_status():
-        from web_status_watcher.purchase.status import (
-            PurchaseAvailabilityStatus,
-        )
-
-        return PurchaseAvailabilityStatus.AVAILABLE
-
-    @staticmethod
-    def _message_for(status) -> str:
-        from web_status_watcher.purchase.status import (
-            PurchaseAvailabilityStatus,
-        )
+    def _message_for(
+        status: PurchaseAvailabilityStatus,
+    ) -> str:
 
         if (
             status
