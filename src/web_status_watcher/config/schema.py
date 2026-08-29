@@ -16,9 +16,12 @@ REQUIRED_SECTIONS = (
 )
 
 
-def validate(config: dict) -> None:
+def validate(
+    config: dict,
+) -> None:
     """
     Validate required top-level sections.
+
     Raises ValueError if configuration is invalid.
     """
 

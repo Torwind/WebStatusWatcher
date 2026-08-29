@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 
 import httpx
@@ -18,6 +19,9 @@ from .validator import validate_url
 class HttpClient:
     """
     HTTP client based on httpx.
+
+    Supports an optional authenticated NBU Coins session
+    through the NBU_OSC_SID environment variable.
     """
 
     def __init__(
@@ -34,9 +38,19 @@ class HttpClient:
         headers = DEFAULT_HEADERS.copy()
         headers["User-Agent"] = APP_USER_AGENT
 
+        cookies = {}
+
+        osc_sid = os.getenv(
+            "NBU_OSC_SID",
+        )
+
+        if osc_sid:
+            cookies["osCsid"] = osc_sid
+
         self._client = httpx.Client(
             timeout=timeout,
             headers=headers,
+            cookies=cookies,
             follow_redirects=follow_redirects,
             verify=verify_ssl,
         )
@@ -131,7 +145,10 @@ class HttpClient:
                     str(exc)
                 ) from exc
 
-            elapsed = time.perf_counter() - started
+            elapsed = (
+                time.perf_counter()
+                - started
+            )
 
             return HttpResponse(
                 url=str(response.url),

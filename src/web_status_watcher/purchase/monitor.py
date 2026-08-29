@@ -66,12 +66,34 @@ class PurchaseAvailabilityMonitor:
         Returns True only when the target changes from
         NOT_AVAILABLE to AVAILABLE.
 
-        Disabled targets are ignored and do not invoke
-        the availability checker.
+        Disabled targets are ignored.
         """
 
         if not target.enabled:
             return False
+
+        result = self.check_result(
+            target,
+            checker,
+        )
+
+        return self.update(
+            result,
+        )
+
+    def check_result(
+        self,
+        target: PurchaseTarget,
+        checker: AvailabilityChecker,
+    ) -> AvailabilityResult | None:
+        """
+        Check a purchase target and return the result.
+
+        Returns None when the target is disabled.
+        """
+
+        if not target.enabled:
+            return None
 
         product = ProductUrlParser.parse(
             target.product_url,
@@ -83,10 +105,6 @@ class PurchaseAvailabilityMonitor:
                 "PurchaseTarget products_id"
             )
 
-        result = checker.check(
+        return checker.check(
             product,
-        )
-
-        return self.update(
-            result,
         )
