@@ -10,6 +10,9 @@ from web_status_watcher.purchase.availability import (
 from web_status_watcher.purchase.checker import (
     AvailabilityChecker,
 )
+from web_status_watcher.purchase.events import (
+    PurchaseAvailableEvent,
+)
 from web_status_watcher.purchase.status import (
     PurchaseAvailabilityStatus,
 )
@@ -42,6 +45,22 @@ class PurchaseAvailabilityMonitor:
         from NOT_AVAILABLE to AVAILABLE.
         """
 
+        return (
+            self.update_event(result)
+            is not None
+        )
+
+    def update_event(
+        self,
+        result: AvailabilityResult,
+    ) -> PurchaseAvailableEvent | None:
+        """
+        Update availability state.
+
+        Returns a PurchaseAvailableEvent only when the
+        product changes from NOT_AVAILABLE to AVAILABLE.
+        """
+
         current_status = result.status
 
         became_available = (
@@ -53,7 +72,13 @@ class PurchaseAvailabilityMonitor:
 
         self._previous_status = current_status
 
-        return became_available
+        if not became_available:
+            return None
+
+        return PurchaseAvailableEvent(
+            products_id=result.products_id,
+            cid=result.cid,
+        )
 
     def check(
         self,
@@ -78,6 +103,31 @@ class PurchaseAvailabilityMonitor:
         )
 
         return self.update(
+            result,
+        )
+
+    def check_event(
+        self,
+        target: PurchaseTarget,
+        checker: AvailabilityChecker,
+    ) -> PurchaseAvailableEvent | None:
+        """
+        Check a purchase target and return an availability
+        event when the target becomes available.
+
+        Returns None when there is no transition or the
+        target is disabled.
+        """
+
+        if not target.enabled:
+            return None
+
+        result = self.check_result(
+            target,
+            checker,
+        )
+
+        return self.update_event(
             result,
         )
 

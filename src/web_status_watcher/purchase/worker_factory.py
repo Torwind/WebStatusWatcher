@@ -6,6 +6,9 @@ from __future__ import annotations
 
 from web_status_watcher.config.config_manager import ConfigManager
 from web_status_watcher.network import HttpClient
+from web_status_watcher.purchase.cart_client import (
+    PurchaseCartClient,
+)
 from web_status_watcher.purchase.checker import (
     AvailabilityChecker,
 )
@@ -66,7 +69,9 @@ class PurchaseWorkerFactory:
         """
         Create purchase worker from configuration.
 
-        Returns None when purchase monitoring is disabled.
+        The worker monitors availability and, when the target
+        becomes available, adds it to the authenticated Chrome
+        cart and stops itself after successful confirmation.
         """
 
         service = PurchaseWorkerFactory.create_service(
@@ -76,8 +81,37 @@ class PurchaseWorkerFactory:
         if service is None:
             return None
 
-        return Worker(
+        worker_holder: dict[str, Worker] = {}
+
+        def callback() -> None:
+            event = service.check_event()
+
+            if event is None:
+                return
+
+            cart_client = PurchaseCartClient.connect()
+
+            try:
+                item = cart_client.add_to_cart(
+                    service.target,
+                )
+            finally:
+                cart_client.close()
+
+            print(
+                "Purchase added to cart: "
+                f"products_id={item.products_id}, "
+                f"quantity={item.quantity}"
+            )
+
+            worker_holder["worker"].stop()
+
+        worker = Worker(
             name="purchase",
             interval=1,
-            callback=service.tick,
+            callback=callback,
         )
+
+        worker_holder["worker"] = worker
+
+        return worker

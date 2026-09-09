@@ -10,6 +10,9 @@ from web_status_watcher.purchase.availability import (
 from web_status_watcher.purchase.checker import (
     AvailabilityChecker,
 )
+from web_status_watcher.purchase.events import (
+    PurchaseAvailableEvent,
+)
 from web_status_watcher.purchase.monitor import (
     PurchaseAvailabilityMonitor,
 )
@@ -46,12 +49,36 @@ class PurchaseMonitorService:
 
         return self._last_result
 
+    @property
+    def target(
+        self,
+    ) -> PurchaseTarget:
+        """
+        Return the purchase target.
+        """
+
+        return self._target
+
     def tick(self) -> bool:
         """
         Check purchase availability.
 
         Returns True only on a
         NOT_AVAILABLE -> AVAILABLE transition.
+        """
+
+        event = self.check_event()
+
+        return event is not None
+
+    def check_event(
+        self,
+    ) -> PurchaseAvailableEvent | None:
+        """
+        Check purchase availability and return an event.
+
+        Returns PurchaseAvailableEvent only when the target
+        changes from NOT_AVAILABLE to AVAILABLE.
         """
 
         result = self._monitor.check_result(
@@ -61,10 +88,10 @@ class PurchaseMonitorService:
 
         if result is None:
             self._last_result = None
-            return False
+            return None
 
         self._last_result = result
 
-        return self._monitor.update(
+        return self._monitor.update_event(
             result,
         )
