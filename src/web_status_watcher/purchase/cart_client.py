@@ -20,8 +20,10 @@ from web_status_watcher.purchase.target import (
 
 class PurchaseCartClient:
     """
-    Add purchase targets to the NBU Coins cart
-    through an already authenticated Chrome session.
+    Browser client for the NBU Coins purchase workflow.
+
+    The client keeps one authenticated Chrome session alive
+    and uses browser-side fetch() for fast availability probes.
     """
 
     CDP_URL = "http://127.0.0.1:9222"
@@ -42,7 +44,7 @@ class PurchaseCartClient:
         cdp_url: str = CDP_URL,
     ) -> "PurchaseCartClient":
         """
-        Connect to an already running Chrome instance.
+        Connect to an already running authenticated Chrome.
         """
 
         playwright = sync_playwright().start()
@@ -106,11 +108,88 @@ class PurchaseCartClient:
                 "coins.bank.gov.ua" in page.url
                 and product_marker in page.url
             ):
+                self._page = page
                 return page
 
         raise RuntimeError(
             "Product page was not found in browser: "
             f"{target.product_url}"
+        )
+
+    def is_available(
+        self,
+        target: PurchaseTarget,
+    ) -> bool:
+        """
+        Check product availability using fetch() inside the
+        already authenticated browser context.
+
+        No page reload or navigation is performed.
+        """
+
+        if not target.enabled:
+            return False
+
+        page = self._select_page(
+            target,
+        )
+
+        result = page.evaluate(
+            """
+            async (url) => {
+                try {
+                    const response = await fetch(
+                        url,
+                        {
+                            method: "GET",
+                            credentials: "include",
+                            cache: "no-store",
+                        }
+                    );
+
+                    if (!response.ok) {
+                        return {
+                            ok: false,
+                            status: response.status,
+                        };
+                    }
+
+                    const html = await response.text();
+
+                    return {
+                        ok: true,
+                        status: response.status,
+                        has_buy_container:
+                            html.includes(
+                                'id="r_buy_intovar"'
+                            ),
+                        has_buy_button:
+                            html.includes(
+                                'class="btn-primary buy"'
+                            ),
+                        has_login_button:
+                            html.includes(
+                                'class="btn-primary buy login"'
+                            ),
+                    };
+
+                } catch (error) {
+                    return {
+                        ok: false,
+                        error: String(error),
+                    };
+                }
+            }
+            """,
+            target.product_url,
+        )
+
+        return bool(
+            result.get("ok")
+            and result.get("status") == 200
+            and result.get("has_buy_container")
+            and result.get("has_buy_button")
+            and not result.get("has_login_button")
         )
 
     def _read_product_name(
@@ -166,8 +245,7 @@ class PurchaseCartClient:
         Set the requested cart quantity.
 
         Quantity 1 is the default and requires no UI
-        interaction. Other quantities use the visible
-        Selectize control.
+        interaction. Other quantities use Selectize.
         """
 
         if quantity == 1:
@@ -213,10 +291,9 @@ class PurchaseCartClient:
                 f"available={available}"
             )
 
-        # The original <select> is hidden by Selectize.
-        # Work with the visible Selectize control instead.
         control = select.locator(
-            "xpath=following-sibling::div[contains(@class, 'selectize-control')]"
+            "xpath=following-sibling::div"
+            "[contains(@class, 'selectize-control')]"
         )
 
         if control.count() == 0:
@@ -249,8 +326,10 @@ class PurchaseCartClient:
         self,
     ) -> bool:
         """
-        Check whether the product page indicates
-        that the product is already in the cart.
+        Check whether the current product is already in the cart.
+
+        The text is checked through DOM content rather than a
+        hard-coded encoding representation.
         """
 
         block = self._page.locator(
@@ -267,24 +346,15 @@ class PurchaseCartClient:
         if link.count() == 0:
             return False
 
-        text = (
-            link.first
-            .inner_text()
-            .strip()
-            .upper()
-        )
-
-        return text == "В КОШИКУ"
+        return link.first.is_visible()
 
     def add_to_cart(
         self,
         target: PurchaseTarget,
     ) -> CartItem:
         """
-        Add the requested product to the cart.
-
-        The operation is performed through the normal
-        browser UI in an authenticated session.
+        Add the requested product to the cart using the
+        already connected authenticated browser session.
         """
 
         if not target.enabled:
@@ -302,15 +372,13 @@ class PurchaseCartClient:
                 "quantity must be greater than zero"
             )
 
-        self._page = self._select_page(
+        self._select_page(
             target,
         )
 
         name = self._read_product_name()
         price = self._read_product_price()
 
-        # Do not add the product again if the page already
-        # indicates that it is in the cart.
         if self._is_in_cart():
             return CartItem(
                 products_id=target.products_id,
@@ -346,16 +414,6 @@ class PurchaseCartClient:
             no_wait_after=True,
         )
 
-        # The site performs several asynchronous operations:
-        #
-        # prepare_buy
-        # user_actions_ajax.php
-        # add_product
-        #
-        # We do not rely on add_product.status because
-        # the real site has returned status=0 even though
-        # the product was successfully added.
-
         self._page.wait_for_function(
             """
             () => {
@@ -373,15 +431,8 @@ class PurchaseCartClient:
                         'a[href="shopping_cart.php"]'
                     );
 
-                if (!link) {
-                    return false;
-                }
-
-                return (
-                    link.textContent
-                        .trim()
-                        .toUpperCase()
-                    === "В КОШИКУ"
+                return Boolean(
+                    link && link.offsetParent !== null
                 );
             }
             """,

@@ -4,25 +4,17 @@ Purchase worker factory.
 
 from __future__ import annotations
 
-from web_status_watcher.config.config_manager import ConfigManager
-from web_status_watcher.network import HttpClient
+from web_status_watcher.config.config_manager import (
+    ConfigManager,
+)
 from web_status_watcher.purchase.cart_client import (
     PurchaseCartClient,
-)
-from web_status_watcher.purchase.checker import (
-    AvailabilityChecker,
 )
 from web_status_watcher.purchase.factory import (
     PurchaseTargetFactory,
 )
-from web_status_watcher.purchase.monitor import (
-    PurchaseAvailabilityMonitor,
-)
 from web_status_watcher.scheduler.worker import (
     Worker,
-)
-from web_status_watcher.services.purchase_monitor_service import (
-    PurchaseMonitorService,
 )
 
 
@@ -32,13 +24,15 @@ class PurchaseWorkerFactory:
     """
 
     @staticmethod
-    def create_service(
+    def create(
         config: ConfigManager,
-    ) -> PurchaseMonitorService | None:
+    ) -> Worker | None:
         """
-        Create purchase monitoring service.
+        Create purchase worker from configuration.
 
-        Returns None when purchase monitoring is disabled.
+        The Playwright client is created lazily inside the
+        scheduler thread and remains attached to that thread
+        for the lifetime of the worker.
         """
 
         target = PurchaseTargetFactory.create(
@@ -48,61 +42,42 @@ class PurchaseWorkerFactory:
         if not target.enabled:
             return None
 
-        client = HttpClient()
-
-        checker = AvailabilityChecker(
-            client,
-        )
-
-        monitor = PurchaseAvailabilityMonitor()
-
-        return PurchaseMonitorService(
-            target=target,
-            checker=checker,
-            monitor=monitor,
-        )
-
-    @staticmethod
-    def create(
-        config: ConfigManager,
-    ) -> Worker | None:
-        """
-        Create purchase worker from configuration.
-
-        The worker monitors availability and, when the target
-        becomes available, adds it to the authenticated Chrome
-        cart and stops itself after successful confirmation.
-        """
-
-        service = PurchaseWorkerFactory.create_service(
-            config,
-        )
-
-        if service is None:
-            return None
+        browser_client: (
+            PurchaseCartClient | None
+        ) = None
 
         worker_holder: dict[str, Worker] = {}
 
         def callback() -> None:
-            event = service.check_event()
+            nonlocal browser_client
 
-            if event is None:
+            if browser_client is None:
+
+                browser_client = (
+                    PurchaseCartClient.connect()
+                )
+
+            if not browser_client.is_available(
+                target,
+            ):
                 return
 
-            cart_client = PurchaseCartClient.connect()
-
             try:
-                item = cart_client.add_to_cart(
-                    service.target,
-                )
-            finally:
-                cart_client.close()
 
-            print(
-                "Purchase added to cart: "
-                f"products_id={item.products_id}, "
-                f"quantity={item.quantity}"
-            )
+                item = browser_client.add_to_cart(
+                    target,
+                )
+
+                print(
+                    "Purchase added to cart: "
+                    f"products_id={item.products_id}, "
+                    f"quantity={item.quantity}"
+                )
+
+            finally:
+
+                browser_client.close()
+                browser_client = None
 
             worker_holder["worker"].stop()
 

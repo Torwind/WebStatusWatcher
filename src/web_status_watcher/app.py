@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from .constants import (
     CONFIG_DIR,
     DATA_DIR,
@@ -12,6 +14,7 @@ from .database import Database
 from .logging import get_logger
 from .purchase.factory import PurchaseTargetFactory
 from .purchase.worker_factory import PurchaseWorkerFactory
+from .scheduler import Scheduler
 from .version import full_version
 
 
@@ -124,100 +127,78 @@ def main() -> None:
     print()
 
     # --------------------------------------------------
-    # Purchase availability check.
+    # Purchase monitoring.
     # --------------------------------------------------
 
     target = PurchaseTargetFactory.create(
         config,
     )
 
-    if target.enabled:
+    if not target.enabled:
+
+        logger.info(
+            "Purchase monitoring disabled"
+        )
+
+    else:
 
         logger.info(
             "Purchase monitoring enabled"
         )
 
-        service = (
-            PurchaseWorkerFactory.create_service(
-                config,
-            )
+        worker = PurchaseWorkerFactory.create(
+            config,
         )
 
-        if service is None:
+        if worker is None:
 
             logger.error(
-                "Purchase monitor service was not created"
+                "Purchase worker was not created"
             )
 
         else:
 
+            scheduler = Scheduler()
+
+            scheduler.add_worker(
+                worker,
+            )
+
             logger.info(
-                "Running purchase availability check"
+                "Purchase worker registered"
+            )
+
+            logger.info(
+                "Starting purchase scheduler"
+            )
+
+            scheduler.start()
+
+            logger.info(
+                "Purchase scheduler started"
             )
 
             try:
 
-                event = service.tick()
+                while worker.running:
 
-                result = service.last_result
-
-                if result is None:
-
-                    logger.warning(
-                        "Purchase check returned no result"
+                    time.sleep(
+                        0.5
                     )
 
-                else:
+            except KeyboardInterrupt:
 
-                    logger.info(
-                        "Purchase status: %s",
-                        result.status.value,
-                    )
-
-                    logger.info(
-                        "Purchase product: "
-                        "products_id=%d cid=%d",
-                        result.products_id,
-                        result.cid,
-                    )
-
-                    logger.info(
-                        "Purchase HTTP status: %d",
-                        result.status_code,
-                    )
-
-                    if result.message:
-
-                        logger.info(
-                            "Purchase message: %s",
-                            result.message,
-                        )
-
-                    if event:
-
-                        logger.info(
-                            "PURCHASE AVAILABLE: "
-                            "NOT_AVAILABLE -> AVAILABLE"
-                        )
-
-                    else:
-
-                        logger.info(
-                            "No purchase availability transition"
-                        )
-
-            except Exception as exc:
-
-                logger.exception(
-                    "Purchase availability check failed: %s",
-                    exc,
+                logger.info(
+                    "Purchase monitoring interrupted"
                 )
 
-    else:
+            finally:
 
-        logger.info(
-            "Purchase monitoring disabled"
-        )
+                scheduler.stop()
+
+                logger.info(
+                    "Purchase scheduler stopped"
+                )
 
     logger.info(
         "Initialization completed"
