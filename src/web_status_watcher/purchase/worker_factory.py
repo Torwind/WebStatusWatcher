@@ -23,6 +23,8 @@ class PurchaseWorkerFactory:
     Creates components for purchase monitoring.
     """
 
+    MAX_IMMEDIATE_RETRIES = 3
+
     @staticmethod
     def create(
         config: ConfigManager,
@@ -33,6 +35,14 @@ class PurchaseWorkerFactory:
         The Playwright client is created lazily inside the
         scheduler thread and remains attached to that thread
         for the lifetime of the worker.
+
+        Normal availability checks are controlled by the
+        worker interval. Technical probe errors are retried
+        immediately up to MAX_IMMEDIATE_RETRIES times.
+
+        When all immediate retries are exhausted, the current
+        browser client is closed and discarded so that the next
+        normal tick can create a fresh browser connection.
         """
 
         target = PurchaseTargetFactory.create(
@@ -41,6 +51,13 @@ class PurchaseWorkerFactory:
 
         if not target.enabled:
             return None
+
+        interval = float(
+            config.get(
+                "purchase.interval",
+                1.25,
+            )
+        )
 
         browser_client: (
             PurchaseCartClient | None
@@ -52,14 +69,56 @@ class PurchaseWorkerFactory:
             nonlocal browser_client
 
             if browser_client is None:
-
                 browser_client = (
                     PurchaseCartClient.connect()
                 )
 
-            if not browser_client.is_available(
-                target,
-            ):
+            retry_count = 0
+
+            while True:
+
+                try:
+
+                    available = (
+                        browser_client.is_available(
+                            target,
+                        )
+                    )
+
+                    break
+
+                except Exception as exc:
+
+                    retry_count += 1
+
+                    print(
+                        "Purchase availability probe failed: "
+                        f"{exc}"
+                    )
+
+                    if (
+                        retry_count
+                        > PurchaseWorkerFactory.MAX_IMMEDIATE_RETRIES
+                    ):
+                        print(
+                            "Purchase availability probe retries "
+                            "exhausted"
+                        )
+
+                        try:
+                            browser_client.close()
+                        finally:
+                            browser_client = None
+
+                        return
+
+                    print(
+                        "Immediate purchase availability retry "
+                        f"{retry_count}/"
+                        f"{PurchaseWorkerFactory.MAX_IMMEDIATE_RETRIES}"
+                    )
+
+            if not available:
                 return
 
             try:
@@ -74,16 +133,27 @@ class PurchaseWorkerFactory:
                     f"quantity={item.quantity}"
                 )
 
-            finally:
+            except Exception:
 
-                browser_client.close()
-                browser_client = None
+                try:
+                    browser_client.close()
+                finally:
+                    browser_client = None
+
+                raise
+
+            else:
+
+                try:
+                    browser_client.close()
+                finally:
+                    browser_client = None
 
             worker_holder["worker"].stop()
 
         worker = Worker(
             name="purchase",
-            interval=1,
+            interval=interval,
             callback=callback,
         )
 

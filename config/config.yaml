@@ -23,6 +23,7 @@ ui:
 
 purchase:
   enabled: false
+  interval: 1.25
   product_url: ""
   products_id: 0
   quantity: 1

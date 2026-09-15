@@ -11,17 +11,16 @@ class Scheduler:
     """
     Simple scheduler.
 
-    Executes every registered worker once per second.
-    Each worker decides internally whether it should
-    perform its work.
+    The scheduler checks registered workers every 0.25 seconds.
+    Each worker controls its own execution interval.
     """
 
+    TICK_INTERVAL = 0.25
+    STARTUP_DELAY = 1.0
+
     def __init__(self) -> None:
-
         self._workers: list[Worker] = []
-
         self._running = False
-
         self._thread: threading.Thread | None = None
 
     def add_worker(
@@ -32,7 +31,9 @@ class Scheduler:
         Register worker.
         """
 
-        self._workers.append(worker)
+        self._workers.append(
+            worker,
+        )
 
     def start(self) -> None:
         """
@@ -60,9 +61,7 @@ class Scheduler:
         self._running = False
 
         if self._thread is not None:
-
             self._thread.join()
-
             self._thread = None
 
     def _run(self) -> None:
@@ -70,11 +69,15 @@ class Scheduler:
         Scheduler loop.
         """
 
-        print("Scheduler started")
+        print(
+            "Scheduler started"
+        )
+
+        time.sleep(
+            self.STARTUP_DELAY
+        )
 
         while self._running:
-
-            time.sleep(1)
 
             print(
                 f"[{time.strftime('%H:%M:%S')}] Tick"
@@ -98,4 +101,10 @@ class Scheduler:
 
                     traceback.print_exc()
 
-        print("Scheduler stopped")
+            time.sleep(
+                self.TICK_INTERVAL
+            )
+
+        print(
+            "Scheduler stopped"
+        )

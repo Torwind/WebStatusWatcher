@@ -37,7 +37,7 @@ worker = PurchaseWorkerFactory.create(
 
 assert worker is not None
 assert worker.name == "purchase"
-assert worker.interval == 1
+assert worker.interval == 1.25
 assert worker.running is True
 assert callable(worker.callback)
 
@@ -58,4 +58,7 @@ print(
 )
 print(
     f"running -> {worker.running}"
+)
+print(
+    f"interval -> {worker.interval}"
 )
