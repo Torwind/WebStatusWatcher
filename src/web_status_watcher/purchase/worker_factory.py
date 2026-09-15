@@ -4,6 +4,8 @@ Purchase worker factory.
 
 from __future__ import annotations
 
+import time
+
 from web_status_watcher.config.config_manager import (
     ConfigManager,
 )
@@ -63,19 +65,57 @@ class PurchaseWorkerFactory:
             PurchaseCartClient | None
         ) = None
 
+        last_availability: bool | None = None
+
         worker_holder: dict[str, Worker] = {}
+
+        def log_availability(
+            available: bool,
+            elapsed_ms: float,
+        ) -> None:
+            nonlocal last_availability
+
+            if available == last_availability:
+                return
+
+            last_availability = available
+
+            if available:
+                print(
+                    "Purchase availability changed: "
+                    "AVAILABLE "
+                    f"probe={elapsed_ms:.0f}ms"
+                )
+                return
+
+            print(
+                "Purchase availability changed: "
+                "NOT_AVAILABLE "
+                f"next_probe={interval:.2f}s "
+                f"probe={elapsed_ms:.0f}ms"
+            )
 
         def callback() -> None:
             nonlocal browser_client
+            nonlocal last_availability
 
             if browser_client is None:
+
                 browser_client = (
                     PurchaseCartClient.connect()
+                )
+
+                last_availability = None
+
+                print(
+                    "Purchase browser client connected"
                 )
 
             retry_count = 0
 
             while True:
+
+                started = time.monotonic()
 
                 try:
 
@@ -85,15 +125,35 @@ class PurchaseWorkerFactory:
                         )
                     )
 
+                    elapsed_ms = (
+                        time.monotonic()
+                        - started
+                    ) * 1000
+
+                    log_availability(
+                        available,
+                        elapsed_ms,
+                    )
+
                     break
 
                 except Exception as exc:
+
+                    elapsed_ms = (
+                        time.monotonic()
+                        - started
+                    ) * 1000
 
                     retry_count += 1
 
                     print(
                         "Purchase availability probe failed: "
                         f"{exc}"
+                    )
+
+                    print(
+                        "Probe elapsed="
+                        f"{elapsed_ms:.0f}ms"
                     )
 
                     if (
@@ -109,6 +169,11 @@ class PurchaseWorkerFactory:
                             browser_client.close()
                         finally:
                             browser_client = None
+                            last_availability = None
+
+                        print(
+                            "Purchase browser client reset"
+                        )
 
                         return
 
@@ -120,6 +185,10 @@ class PurchaseWorkerFactory:
 
             if not available:
                 return
+
+            print(
+                "Purchase action: ADD_TO_CART"
+            )
 
             try:
 
@@ -139,6 +208,12 @@ class PurchaseWorkerFactory:
                     browser_client.close()
                 finally:
                     browser_client = None
+                    last_availability = None
+
+                print(
+                    "Purchase browser client reset "
+                    "after purchase error"
+                )
 
                 raise
 
@@ -148,6 +223,7 @@ class PurchaseWorkerFactory:
                     browser_client.close()
                 finally:
                     browser_client = None
+                    last_availability = None
 
             worker_holder["worker"].stop()
 

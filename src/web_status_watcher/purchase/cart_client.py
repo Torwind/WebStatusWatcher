@@ -327,9 +327,6 @@ class PurchaseCartClient:
     ) -> bool:
         """
         Check whether the current product is already in the cart.
-
-        The text is checked through DOM content rather than a
-        hard-coded encoding representation.
         """
 
         block = self._page.locator(
